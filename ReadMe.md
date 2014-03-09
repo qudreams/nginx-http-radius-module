@@ -29,17 +29,23 @@
         http {
             #set the directory of radius dictionary.
             radius_dict_directory "/usr/local/nginx/raddb/";
+
             #radius server configuration including
+
             radius_server "radius_server1" {
                 #authentication timed-out
                 auth_timeout 5;
+
                 #limit to resend the request
                 resend_limit 3;
+
                 #radius authentication server url.
                 url "127.0.0.1:1812";
+
                 #share secret
                 share_secret "secret";
             }
+
             server {
                 listen       80;
                 server_name  localhost;

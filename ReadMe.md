@@ -25,8 +25,7 @@
 
     3. install nginx,and then modify the configuration file nginx.conf.
         the configuration file may be like the following:
-
-    ```bash
+        
         http {
             #set the directory of radius dictionary.
             radius_dict_directory "/usr/local/nginx/raddb/";
@@ -54,16 +53,15 @@
                     index  index.html index.htm;
 
                     #radius server configuration
-
+                    
                     #the third paramter is authentication method,you can set the following value:
-
                     # PAP CHAP MSCHAP MSCHAPV2 EAPMD5
-
+                    
                     auth_radius_server "radius_server1" "PAP";
-
+                    
                     #authentication realm,you can set the following value:
-
                     # Restricted "Close Content" off
+                    
                     auth_radius "Restricted";
                 } 
             }

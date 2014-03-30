@@ -20,16 +20,7 @@
 #include <assert.h>
 #include <stdint.h>
 
-#include <radius.h>
-#include <libradius.h> 
-#include <packet.h> 
-/*Microsoft CHAP*/ 
-#include <mschap.h> 
-#include <smbdes.h> 
-/*end Microsoft*/ 
 #include <radclient.h> 
-//eap
-#include <radeapclient.h> 
 
 #define RADIUS_PWD_LEN      128
 #define RADIUS_SECRET_LEN   64

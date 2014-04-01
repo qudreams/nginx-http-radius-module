@@ -617,13 +617,8 @@ ngx_http_auth_radius_create_request(ngx_http_auth_radius_proxy_t* proxy,
     user = r->headers_in.user;
     pwd = r->headers_in.passwd;
 
-	if(rlcf->auth_type != EAPMD5) {
-		rp = rad_request_packet_create((char*)user.data,user.len,
-			(char*)pwd.data,pwd.len,rlcf->auth_type);
-	} else {
-		rp = rad_create_eap_response((char*)user.data,user.len);
-	}
-
+	rp = rad_request_packet_create((char*)user.data,user.len,
+		    (char*)pwd.data,pwd.len,rlcf->auth_type);
 	if(rp == NULL) {
 		goto failed;
 	}

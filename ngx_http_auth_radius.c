@@ -153,10 +153,10 @@ ngx_http_auth_radius_close_connection(ngx_http_auth_radius_connection_t* uc)
 }
 
 
-static ssize_t 
+static ngx_int_t
 ngx_http_auth_radius_recv(ngx_connection_t *c)
 {
-    ssize_t       n;
+    ngx_int_t     n;
     ngx_err_t     err;
     ngx_event_t  *rev;
 	RADIUS_PACKET* reply = NULL;
@@ -465,7 +465,11 @@ ngx_http_auth_radius_process_response(ngx_http_auth_radius_request_t* rr)
 	} else {
 		rr->reply = reply;
 		rr->done = 1;
-		rr->error_code = NGX_HTTP_AUTH_RADIUS_OK;
+        if(reply->code == PW_AUTHENTICATION_ACK) {
+		    rr->error_code = NGX_HTTP_AUTH_RADIUS_OK;
+        } else {
+            rr->error_code = NGX_HTTP_AUTH_RADIUS_REJECT;
+        }
 		ngx_http_auth_radius_process_finish(rr);
     }
     return;
@@ -888,9 +892,9 @@ static void
 ngx_http_auth_radius_authenticate_finish_handler(ngx_http_auth_radius_request_t* rr)
 {
     ngx_http_auth_radius_ctx_t* ctx = rr->data;
-    ngx_log_debug(NGX_LOG_INFO,ctx->proxy->log,0,
-            "ngx_http_auth_radius: request finish: id=%d,code=%d",
-            rr->request->id,rr->request->code);
+    ngx_log_debug3(NGX_LOG_DEBUG_HTTP,ctx->r->connection->log,0,
+        "ngx_http_auth_radius: request finish: id=%d,code=%d,authentication result=%i",
+        rr->request->id,rr->request->code,rr->error_code);
 
     ngx_http_core_run_phases(ctx->r);
 }

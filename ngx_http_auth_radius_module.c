@@ -263,6 +263,7 @@ ngx_http_auth_radius_parse_auth_type(const ngx_str_t* type_name) {
         
         if(ngx_strncasecmp(type_name->data,name,type_name->len) == 0) {
             auth_type = i;                      
+            break;
         }
     }
     

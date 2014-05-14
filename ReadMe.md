@@ -6,23 +6,17 @@
 #Note:
     The nginx-http-radius module depend on libmyradclient,so you must compile the library firstly.
     The module also just support the following authentication methods:
-        
         PAP,CHAP,MSCHAP,MSCHAPV2,EAPMD5
 #Usage:
     1.compile the libmyradclient firstly.
-
     2.compile the module into nginx like this:
-
         ./configure --add-module=src/nginx-http-radius-module
-        
         make
 
         after compiling,install it by the following directive:
+            make install
 
-        make install
-        
         Nginx will be installed into the directory /usr/local/nginx acquiescently.
-
     3. install nginx,and then modify the configuration file nginx.conf.
         the configuration file may be like the following:
         

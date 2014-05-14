@@ -13,12 +13,12 @@
 
 #define     AUTH_RADIUS_UNKNOWN     -1
 
-static u_char* auth_radius_types[] = {
-    (u_char*)"PAP",
-    (u_char*)"CHAP",
-    (u_char*)"MSCHAP",
-    (u_char*)"MSCHAP2",
-    (u_char*)"EAPMD5"
+static ngx_str_t auth_radius_types[] = {
+    ngx_string("PAP"),
+    ngx_string("CHAP"),
+    ngx_string("MSCHAP"),
+    ngx_string("MSCHAP2"),
+    ngx_string("EAPMD5")
 };
 
 static void* ngx_http_auth_radius_create_main_conf(ngx_conf_t* cf);
@@ -256,12 +256,14 @@ static ngx_int_t
 ngx_http_auth_radius_parse_auth_type(const ngx_str_t* type_name) {
     ngx_int_t auth_type = AUTH_RADIUS_UNKNOWN;
     ngx_uint_t i = 0;
-    u_char* name = NULL;
+    ngx_str_t* name = NULL;
 
-    for(i = 0;i < sizeof(auth_radius_types) / sizeof(u_char*);i++) {
-        name = *(auth_radius_types + i); 
+    for(i = 0;i < sizeof(auth_radius_types) / sizeof(ngx_str_t);i++) {
+        name = auth_radius_types + i; 
         
-        if(ngx_strncasecmp(type_name->data,name,type_name->len) == 0) {
+        if((type_name->len == name->len) && 
+            (ngx_strncasecmp(type_name->data,name->data,type_name->len) == 0)) 
+        {
             auth_type = i;                      
             break;
         }

@@ -4,7 +4,9 @@
 @author qudreams
 
 #Note:
-    The nginx-http-radius module depend on libmyradclient,so you must compile the library firstly.
+    The nginx-http-radius module depend on libmyradclient,so you must compile the library firstly;
+    libmyradclient.a must be in same directory with nginx-http-radius module,because the nginx-http-radius module
+    set the environment variables CORE_INCS and CORE_LIBS in 'config' file depending this.
     The module also just support the following authentication methods:
         PAP,CHAP,MSCHAP,MSCHAPV2,EAPMD5
 #Usage:

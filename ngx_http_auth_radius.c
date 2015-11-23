@@ -92,17 +92,6 @@ ngx_http_auth_radius_connect(int sf,ngx_pool_t*pool,ngx_log_t* log)
 
     c->number = ngx_atomic_fetch_add(ngx_connection_counter, 1);
 
-#if (NGX_THREADS)
-
-    /* TODO: lock event when call completion handler */
-
-    rev->lock = &c->lock;
-    wev->lock = &c->lock;
-    rev->own_lock = &c->lock;
-    wev->own_lock = &c->lock;
-
-#endif
-
     /* UDP sockets are always ready to write */
     wev->ready = 1;
 

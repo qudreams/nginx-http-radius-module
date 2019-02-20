@@ -1,24 +1,24 @@
-#include "ngx_http_auth_radius.h" 
+#include "ngx_http_auth_radius.h"
 
 #define MAX_RADIUS_SOCKETS       			32
 
-typedef void (*ngx_queue_walk_handler)(ngx_queue_t* q,void* ctx); 
+typedef void (*ngx_queue_walk_handler)(ngx_queue_t* q,void* ctx);
 
-static void 
+static void
 ngx_http_auth_radius_response_post_event(ngx_http_auth_radius_proxy_t* proxy,
-        RADIUS_PACKET* reply); 
+        RADIUS_PACKET* reply,ngx_log_t* log);
 static ssize_t ngx_http_auth_radius_recv(ngx_connection_t *c);
-static void 
+static void
 ngx_http_auth_radius_process_finish(ngx_http_auth_radius_request_t* rr);
 
 void
 ngx_queue_walk(ngx_queue_t* queue,
-        ngx_queue_walk_handler walk_handler,void* ctx) 
+        ngx_queue_walk_handler walk_handler,void* ctx)
 {
     ngx_queue_t* q = NULL;
     ngx_queue_t* next = NULL;
     ngx_queue_t* sentinel = NULL;
-    
+
     sentinel = ngx_queue_sentinel(queue);
 
     for(q = ngx_queue_head(queue);q != sentinel;q = next) {
@@ -28,7 +28,7 @@ ngx_queue_walk(ngx_queue_t* queue,
 }
 
 
-ngx_http_auth_radius_connection_t* 
+ngx_http_auth_radius_connection_t*
 ngx_http_auth_radius_connect(int sf,ngx_pool_t*pool,ngx_log_t* log)
 {
     ngx_int_t          event;
@@ -45,7 +45,7 @@ ngx_http_auth_radius_connect(int sf,ngx_pool_t*pool,ngx_log_t* log)
                 NGX_ENOMEM,"failed to create radius connection");
 		return NULL;
 	}
-	
+
     s = ngx_socket(sf, SOCK_DGRAM, 0);
 
     ngx_log_debug1(NGX_LOG_DEBUG_EVENT,log, 0, "UDP socket %d", s);
@@ -88,7 +88,7 @@ ngx_http_auth_radius_connect(int sf,ngx_pool_t*pool,ngx_log_t* log)
 
     rev->log = log;
     wev->log = log;
-	
+
 
     c->number = ngx_atomic_fetch_add(ngx_connection_counter, 1);
 
@@ -123,16 +123,16 @@ ngx_http_auth_radius_connect(int sf,ngx_pool_t*pool,ngx_log_t* log)
 }
 
 
-void 
+void
 ngx_http_auth_radius_close_connection(ngx_http_auth_radius_connection_t* uc)
 {
 	ngx_pool_t* pool = NULL;
     ngx_http_auth_radius_proxy_t* proxy = uc->data;
-	
-	pool = proxy->pool;	
+
+	pool = proxy->pool;
 	if(fr_packet_list_socket_remove(proxy->request_packets,uc->c->fd)) {
-		ngx_log_debug(NGX_LOG_INFO,proxy->log,0,
-                "ngx_http_auth_radius: close udp connection: socket=%d",uc->c->fd);	
+		ngx_log_debug(NGX_LOG_DEBUG_HTTP,uc->c->log,0,
+                "ngx_http_auth_radius: close udp connection: socket=%d",uc->c->fd);
 
 		fr_hash_table_delete(proxy->udp_connections,uc);
 		ngx_close_connection(uc->c);
@@ -151,7 +151,7 @@ ngx_http_auth_radius_recv(ngx_connection_t *c)
 	RADIUS_PACKET* reply = NULL;
 	ngx_http_auth_radius_connection_t* uc = NULL;
 	ngx_http_auth_radius_proxy_t* proxy = NULL;
-	
+
 	uc = c->data;
 	proxy = uc->data;
     rev = c->read;
@@ -160,10 +160,10 @@ ngx_http_auth_radius_recv(ngx_connection_t *c)
         reply = rad_recv(c->fd,0);
 
         if (reply) {
-			ngx_http_auth_radius_response_post_event(proxy,reply);		
+			ngx_http_auth_radius_response_post_event(proxy,reply,c->log);
 			return NGX_OK;
         }
-		err = ngx_socket_errno; 
+		err = ngx_socket_errno;
 
         if (err == NGX_EAGAIN || err == NGX_EINTR) {
             n = NGX_AGAIN;
@@ -184,7 +184,7 @@ ngx_http_auth_radius_recv(ngx_connection_t *c)
 }
 
 
-static void 
+static void
 ngx_http_auth_radius_recv_response(ngx_event_t* rev) {
 	ngx_connection_t* c = NULL;
 	ssize_t n = 0;
@@ -199,31 +199,32 @@ ngx_http_auth_radius_recv_response(ngx_event_t* rev) {
 }
 
 
-ngx_http_auth_radius_connection_t* 
-ngx_http_auth_radius_create_connection(ngx_http_auth_radius_proxy_t* proxy,int sf)
+static ngx_http_auth_radius_connection_t*
+ngx_http_auth_radius_create_connection(ngx_http_auth_radius_proxy_t* proxy,
+                                    int sf,ngx_log_t* log)
 {
 	fr_hash_table_t* ucs = NULL;
 	ngx_http_auth_radius_connection_t* uc = NULL;
 
 	ucs = proxy->udp_connections;
-	uc = ngx_http_auth_radius_connect(sf,proxy->pool,proxy->log);
+	uc = ngx_http_auth_radius_connect(sf,proxy->pool,log);
 	if(uc == NULL) {
 		return NULL;
-	}	
+	}
 	uc->data = proxy;
 
 	if(fr_hash_table_insert(ucs,uc)) {
 		proxy->conn_counter++;
-	
+
 		uc->c->data = uc;
 		uc->c->read->handler = ngx_http_auth_radius_recv_response;
 	} else {
-		ngx_log_error(NGX_LOG_ERR,proxy->log,0,
+		ngx_log_error(NGX_LOG_ERR,log,0,
 		    "ngx_http_auth_radius: failed to insert the \
             connection socketfd=%d to hash-table of connections",
 			uc->c->fd);
 
-		ngx_close_connection(uc->c);	
+		ngx_close_connection(uc->c);
 		ngx_pfree(proxy->pool,uc);
 		uc = NULL;
 	}
@@ -232,15 +233,17 @@ ngx_http_auth_radius_create_connection(ngx_http_auth_radius_proxy_t* proxy,int s
 }
 
 
-ngx_int_t 
+ngx_int_t
 ngx_http_auth_radius_alloc_id(ngx_http_auth_radius_proxy_t* proxy,
-        ngx_http_auth_radius_request_t* rr)
+                    ngx_http_auth_radius_request_t* rr,ngx_log_t* log)
 {
 	assert(proxy != NULL && rr != NULL);
-	
+
+    int rcode = 0;
 	fr_packet_list_t* pl = NULL;
-	ngx_http_auth_radius_connection_t* uc = NULL;
-	int rcode = 0;
+    int sf = rr->request->dst_ipaddr.af;
+    ngx_http_auth_radius_connection_t* uc = NULL;
+
 	pl = proxy->request_packets;
 
 retry:
@@ -251,25 +254,25 @@ retry:
 	}
 
 	if(rcode == 0)  {
-		if(proxy->conn_counter < MAX_RADIUS_SOCKETS) { 
+		if(proxy->conn_counter < MAX_RADIUS_SOCKETS) {
 			//there is no udp connection,so we create new one.
-			ngx_log_debug(NGX_LOG_INFO,proxy->log,0,
+			ngx_log_debug(NGX_LOG_DEBUG_HTTP,log,0,
 					"ngx_http_auth_radius: \
                     there is no udp connection,so we create a new one.");
 
-			uc = ngx_http_auth_radius_create_connection(proxy,rr->request->dst_ipaddr.af);
+			uc = ngx_http_auth_radius_create_connection(proxy,sf,log);
 			if(uc == NULL) {
 				return NGX_ERROR;
 			}
 			if(fr_packet_list_socket_add(pl,uc->c->fd) == 0) {
 				ngx_log_error(NGX_LOG_ERR,
-                   proxy->log,0,
+                   log,0,
                    "ngx_http_auth_radius: add socket failed");
 			}
 			goto retry;
 		} else {
 			//beyond the limit of sockets
-			ngx_log_error(NGX_LOG_ERR,proxy->log,0,
+			ngx_log_error(NGX_LOG_ERR,log,0,
 					"ngx_http_auth_radius: \
                     the opening sockets have been out of limits: %d",
 					MAX_RADIUS_SOCKETS);
@@ -279,7 +282,7 @@ retry:
 	}
 
 	if(rcode == 0) {
-		ngx_log_error(NGX_LOG_ERR,proxy->log,0,
+		ngx_log_error(NGX_LOG_ERR,log,0,
             "ngx_http_auth_radius: %s",fr_strerror());
 
 		return NGX_ERROR;
@@ -287,7 +290,7 @@ retry:
 
 	assert(rr->request->id != -1);
 
-	ngx_log_debug(NGX_LOG_INFO,proxy->log,0,
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP,log,0,
 			"ngx_http_auth_radius: alloc request id successfully: %d,fd=%d",
 			rr->request->id,rr->request->sockfd);
 
@@ -295,23 +298,23 @@ retry:
 }
 
 
-static void 
+static void
 ngx_http_auth_radius_delete_request(ngx_http_auth_radius_request_t* rr)
 {
     ngx_queue_remove(&rr->queue);
 }
 
 
-static void 
+static void
 ngx_http_auth_radius_add_request(ngx_http_auth_radius_request_t* rr) {
     ngx_http_auth_radius_ctx_t* ctx = rr->data;
     ngx_http_auth_radius_proxy_t* proxy = ctx->proxy;
 
-    ngx_queue_insert_tail(&proxy->requests,&rr->queue);           
+    ngx_queue_insert_tail(&proxy->requests,&rr->queue);
 }
 
 
-void 
+void
 ngx_http_auth_radius_resend_handler(ngx_event_t* ev)
 {
     ngx_http_auth_radius_proxy_t* proxy = NULL;
@@ -324,16 +327,16 @@ ngx_http_auth_radius_resend_handler(ngx_event_t* ev)
     ngx_http_auth_radius_server_t* server = NULL;
     time_t timer;
     ngx_int_t temp_timer;
-    time_t now; 
-    
+    time_t now;
+
 	if(ev) {
         timer = 0;
-        
+
         now = time(NULL);
         proxy = ev->data;
         requests = &proxy->requests;
         sentinel = ngx_queue_sentinel(requests);
-		
+
         for(q = ngx_queue_head(requests);q != sentinel;q = next) {
             next = ngx_queue_next(q);
             rr = ngx_queue_data(q,ngx_http_auth_radius_request_t,queue);
@@ -343,16 +346,16 @@ ngx_http_auth_radius_resend_handler(ngx_event_t* ev)
 
             if(rr->done == 0)
             {
-                if((rr->tries >= server->resend_limit) && (now >= rr->expire)) 
+                if((rr->tries >= server->resend_limit) && (now >= rr->expire))
                 {
                     rr->done = 1;
                     rr->error_code = NGX_HTTP_AUTH_RADIUS_TIMEDOUT;
                     ngx_http_auth_radius_process_finish(rr);
                 } else if(now >= rr->expire) {
                     /*resend it*/
-                   ngx_log_error(NGX_LOG_ALERT,proxy->log,0,
+                   ngx_log_debug(NGX_LOG_DEBUG_HTTP,ev->log,0,
                        "resend the radius request id %d,code %d again",
-					   rr->request->id,rr->request->code); 
+					   rr->request->id,rr->request->code);
 
                    rr->tries++;
                    rr->expire = now + server->auth_timeout;
@@ -381,12 +384,11 @@ ngx_http_auth_radius_resend_handler(ngx_event_t* ev)
 }
 
 
-static void 
+static void
 ngx_http_auth_radius_process_response(ngx_http_auth_radius_request_t* rr)
 {
 	RADIUS_PACKET* pr = NULL;
 	ngx_http_auth_radius_ctx_t* ctx = NULL;
-	ngx_http_auth_radius_proxy_t* proxy = NULL;
     ngx_http_auth_radius_server_t* server = NULL;
     ngx_http_auth_radius_loc_conf_t* rlcf = NULL;
 	RADIUS_PACKET* reply = NULL;
@@ -394,16 +396,16 @@ ngx_http_auth_radius_process_response(ngx_http_auth_radius_request_t* rr)
 	char buf[256] = {0};
 
 	ctx = rr->data;
-	proxy = ctx->proxy;
+    pr = rr->request;
+	reply = rr->reply;
+
     rlcf = ctx->rlcf;
     server = rlcf->server;
-	log = proxy->log;
-	reply = rr->reply;
-	pr = rr->request;
+    log = ctx->r->connection->log;
 
 	if(rad_verify(reply,pr,(char*)server->share_secret.data) < 0) //error
     {
-     	ngx_memzero(buf,sizeof(buf)); 
+     	ngx_memzero(buf,sizeof(buf));
         inet_ntop(reply->src_ipaddr.af,&reply->src_ipaddr.ipaddr,buf,sizeof(buf));
        	ngx_log_error(NGX_LOG_WARN,log,0,
             "unexpected reply from server: %s:%d,so discard it",
@@ -425,7 +427,7 @@ ngx_http_auth_radius_process_response(ngx_http_auth_radius_request_t* rr)
 
 		goto failed;
 	}
-	
+
 	if(rlcf->auth_type == EAPMD5) {
 		rad_unmap_eap_types(reply);
 	}
@@ -435,11 +437,11 @@ ngx_http_auth_radius_process_response(ngx_http_auth_radius_request_t* rr)
 
 	if(rlcf->auth_type == EAPMD5 && reply->code == PW_ACCESS_CHALLENGE) {
 		if(rad_process_eap_request(pr,reply,
-            (char*)server->share_secret.data,rr->password) < 0) 
+            (char*)server->share_secret.data,rr->password) < 0)
         {
 			rr->reply = NULL;
 			goto failed;
-	    } else { 
+	    } else {
 		    /*if we received a Challenge from radius-server,
             * we will send a access-request again
 			*so we should reset the expired-time.
@@ -447,7 +449,7 @@ ngx_http_auth_radius_process_response(ngx_http_auth_radius_request_t* rr)
 			rr->expire = time(NULL) + server->auth_timeout;
 			/*
 			* the reply is useless,so we free it.
-			*/ 
+			*/
 			rr->reply = NULL;
 			rad_free(&reply);
 	    }
@@ -468,7 +470,7 @@ failed:
 }
 
 
-static void 
+static void
 ngx_http_auth_radius_response_post_event_handler(ngx_event_t* ev)
 {
 	ngx_http_auth_radius_request_t* rr = NULL;
@@ -479,20 +481,18 @@ ngx_http_auth_radius_response_post_event_handler(ngx_event_t* ev)
 }
 
 
-static void 
+static void
 ngx_http_auth_radius_response_post_event(ngx_http_auth_radius_proxy_t* proxy,
-        RADIUS_PACKET* reply)
+        RADIUS_PACKET* reply,ngx_log_t* log)
 {
 	RADIUS_PACKET** pr = NULL;
 	ngx_http_auth_radius_request_t* rr = NULL;
 	fr_packet_list_t* pl = NULL;
 	char addr[256] = {0};
 	ngx_pool_t* pool = NULL;
-	ngx_log_t* log = NULL;
 	ngx_event_t* ev = NULL;
 
 	pl = proxy->request_packets;
-	log = proxy->log;
 
 	pr = fr_packet_list_find_byreply(pl,reply);
 	if(pr) {
@@ -525,12 +525,12 @@ ngx_http_auth_radius_response_post_event(ngx_http_auth_radius_proxy_t* proxy,
 /*
  * we will call this function after radius authentication or authentication timeout
  */
-static void 
+static void
 ngx_http_auth_radius_process_finish(ngx_http_auth_radius_request_t* rr) {
 	ngx_http_auth_radius_ctx_t* ctx = NULL;
-    ngx_http_auth_radius_proxy_t* proxy = NULL; 
+    ngx_http_auth_radius_proxy_t* proxy = NULL;
 
-    ctx = rr->data;  
+    ctx = rr->data;
     proxy = ctx->proxy;
 
     if(rr->done) {
@@ -541,7 +541,7 @@ ngx_http_auth_radius_process_finish(ngx_http_auth_radius_request_t* rr) {
 }
 
 
-void 
+void
 ngx_http_auth_radius_destroy_request(ngx_http_auth_radius_proxy_t* proxy,
         ngx_http_auth_radius_request_t* rr)
 {
@@ -554,7 +554,7 @@ ngx_http_auth_radius_destroy_request(ngx_http_auth_radius_proxy_t* proxy,
 	pool = rr->pool;
 
 	if(rr->request->id >= 0) {
-		ngx_log_debug(NGX_LOG_INFO,pool->log,0,
+		ngx_log_debug(NGX_LOG_DEBUG_HTTP,pool->log,0,
              "ngx_http_auth_radius: free radius packet id: %d",
              rr->request->id);
     	if(fr_packet_list_id_free(proxy->request_packets,rr->request) == 0) {
@@ -568,25 +568,24 @@ ngx_http_auth_radius_destroy_request(ngx_http_auth_radius_proxy_t* proxy,
     /*free: RADIUS_PACKET to request*/
 	if(rr->request) {
 		rad_free(&rr->request);
-	}	
+	}
 
     /*free: RADIUS_PACKET to reply*/
 	if(rr->reply) {
 		rad_free(&rr->reply);
 	}
 
-	ngx_pfree(pool,rr);	
+	ngx_pfree(pool,rr);
 }
 
 
 /*
  * create radius request
  */
-ngx_http_auth_radius_request_t* 
+ngx_http_auth_radius_request_t*
 ngx_http_auth_radius_create_request(ngx_http_auth_radius_proxy_t* proxy,
         ngx_http_request_t* r)
 {
-	ngx_log_t* log = NULL;
 	ngx_http_auth_radius_request_t* rr = NULL;
 	RADIUS_PACKET* rp = NULL;
 	ngx_addr_t* addr = NULL;
@@ -598,7 +597,6 @@ ngx_http_auth_radius_create_request(ngx_http_auth_radius_proxy_t* proxy,
     ngx_pool_t* pool = r->pool;
     ngx_http_auth_radius_server_t* server = NULL;
 
-    log = proxy->log;
 	rlcf = ngx_http_get_module_loc_conf(r,ngx_http_auth_radius_module);
 
 	rr = ngx_pcalloc(pool,sizeof(ngx_http_auth_radius_request_t));
@@ -615,7 +613,7 @@ ngx_http_auth_radius_create_request(ngx_http_auth_radius_proxy_t* proxy,
 	if(rp == NULL) {
 		goto failed;
 	}
-	
+
     /*Note:
      * we must use RADIUS_PACKET member dst_ipaddr as following
      */
@@ -626,22 +624,22 @@ ngx_http_auth_radius_create_request(ngx_http_auth_radius_proxy_t* proxy,
     fr_sockaddr2ipaddr((const struct sockaddr_storage*)addr->sockaddr,
             addr->socklen,&rp->dst_ipaddr,&port);
     rp->dst_port = port & 0xFFFF;
-	rp->sockfd = -1; 
+	rp->sockfd = -1;
 	rp->src_ipaddr.af = rp->dst_ipaddr.af;
 
 	rr->request = rp;
 	rr->reply = NULL;
-	
+
 	rr->tries = 0;
 	ngx_memcpy(rr->password,(char*)pwd.data,pwd.len);
 	rr->done = 0;
-    
-	if(ngx_http_auth_radius_alloc_id(proxy,rr) == NGX_ERROR) {
+
+	if(ngx_http_auth_radius_alloc_id(proxy,rr,r->connection->log) == NGX_ERROR) {
 		goto failed;
 	}
 	/*
 	 * Note:
-	 * we must call rad_set_eap_id to set 
+	 * we must call rad_set_eap_id to set
      * the eap-id attribute after ceating EAP-response packet
 	 */
 	if(rlcf->auth_type == EAPMD5) {
@@ -652,16 +650,16 @@ ngx_http_auth_radius_create_request(ngx_http_auth_radius_proxy_t* proxy,
 
 	rr->timestamp = time(NULL);
     rr->expire = rr->timestamp + server->auth_timeout;
-	rr->error_code = NGX_HTTP_AUTH_RADIUS_OK;	
+	rr->error_code = NGX_HTTP_AUTH_RADIUS_OK;
 
 	return rr;
 failed:
 	ngx_http_auth_radius_destroy_request(proxy,rr);
-	return NULL;	
+	return NULL;
 }
 
 
-ngx_int_t 
+ngx_int_t
 ngx_http_auth_radius_send_request(ngx_http_request_t* r) {
 	ngx_http_auth_radius_proxy_t* proxy = NULL;
     ngx_http_auth_radius_request_t* rr = NULL;
@@ -691,27 +689,27 @@ ngx_http_auth_radius_send_request(ngx_http_request_t* r) {
 	/*
 	 * Note:
 	 * the follow function fr_packet_list_insert is very different to others.
-	 * On success,the function will return 1 
+	 * On success,the function will return 1
 	 * On failed,it will return 0
 	 */
 	if(fr_packet_list_insert(proxy->request_packets,&rr->request) == 0) {
-		ngx_log_error(NGX_LOG_ERR,proxy->log,0,
+		ngx_log_error(NGX_LOG_ERR,r->connection->log,0,
 				"add radius packet failed: fd=%d,id=%d",
 				rr->request->sockfd,rr->request->id);
 		return NGX_ERROR;
-	}	
+	}
 
     if(ngx_queue_empty(&proxy->requests)) {
         ngx_add_timer(&proxy->resend_event,(ngx_msec_t)(server->auth_timeout * 1000));
     }
 
-    ngx_http_auth_radius_add_request(rr); 	
-	
-	return NGX_OK;	
+    ngx_http_auth_radius_add_request(rr);
+
+	return NGX_OK;
 }
 
 
-ngx_int_t 
+ngx_int_t
 ngx_http_auth_radius_dict_init(const ngx_str_t* dict_dir,ngx_log_t* log)
 {
 	ngx_int_t rc = NGX_OK;
@@ -723,12 +721,12 @@ ngx_http_auth_radius_dict_init(const ngx_str_t* dict_dir,ngx_log_t* log)
               "ngx_http_auth_radius: failed to initial radius dictionry: %s",
               fr_strerror());
 		rc = NGX_ERROR;
-	}	
+	}
 	return rc;
 }
 
 
-static int 
+static int
 ngx_http_auth_radius_close_connection_walker(void* ctx,void* data)
 {
 	ngx_http_auth_radius_connection_t* uc = data;
@@ -739,12 +737,12 @@ ngx_http_auth_radius_close_connection_walker(void* ctx,void* data)
 }
 
 
-static void 
+static void
 ngx_http_auth_radius_destroy_connections(ngx_http_auth_radius_proxy_t* proxy)
 {
 	fr_hash_table_t* ucs = NULL;
 	ucs = proxy->udp_connections;
-	
+
 	fr_hash_table_walk(ucs,ngx_http_auth_radius_close_connection_walker,proxy);
 	fr_hash_table_free(ucs);
 	proxy->udp_connections = NULL;
@@ -754,7 +752,7 @@ ngx_http_auth_radius_destroy_connections(ngx_http_auth_radius_proxy_t* proxy)
 static void
 ngx_http_auth_radius_clean_queue_request(ngx_queue_t* q,void* ctx)
 {
-    ngx_http_auth_radius_request_t* rr = NULL; 
+    ngx_http_auth_radius_request_t* rr = NULL;
     ngx_http_auth_radius_proxy_t* proxy = ctx;
 
 	ngx_queue_remove(q);
@@ -763,21 +761,21 @@ ngx_http_auth_radius_clean_queue_request(ngx_queue_t* q,void* ctx)
 }
 
 
-static void 
+static void
 ngx_http_auth_radius_cleanall_request(ngx_http_auth_radius_proxy_t* proxy)
 {
    ngx_queue_walk(&proxy->requests,
-		   ngx_http_auth_radius_clean_queue_request,proxy); 
+		   ngx_http_auth_radius_clean_queue_request,proxy);
 }
 
 
-static void 
+static void
 ngx_http_auth_radius_proxy_cleanup(void* data)
 {
 	ngx_http_auth_radius_proxy_t* proxy = data;
 
 	if(proxy) {
-		ngx_log_debug(NGX_LOG_DEBUG,proxy->log,0,
+		ngx_log_debug(NGX_LOG_DEBUG_HTTP,proxy->pool->log,0,
 			"cleanup radius authentication");
 
 		ngx_http_auth_radius_cleanall_request(proxy);
@@ -799,7 +797,7 @@ ngx_http_auth_radius_proxy_cleanup(void* data)
 }
 
 
-static uint32_t 
+static uint32_t
 ngx_http_auth_radius_hash_connection(const void* data)
 {
 	ngx_http_auth_radius_connection_t* uc = NULL;
@@ -809,7 +807,7 @@ ngx_http_auth_radius_hash_connection(const void* data)
 }
 
 
-ngx_http_auth_radius_proxy_t* 
+ngx_http_auth_radius_proxy_t*
 ngx_http_auth_radius_create_proxy(ngx_pool_t* pool)
 {
 	ngx_pool_cleanup_t* cln = NULL;
@@ -821,30 +819,26 @@ ngx_http_auth_radius_create_proxy(ngx_pool_t* pool)
 	}
 
     log = pool->log;
-	
+    ngx_log_debug(NGX_LOG_DEBUG_HTTP,log,0,"create proxy");
+
 	cln = ngx_pool_cleanup_add(pool,0);
 	if(cln == NULL) {
 		goto failed;
 	}
 
 	cln->handler = ngx_http_auth_radius_proxy_cleanup;
-	
-	proxy = ngx_pcalloc(pool,sizeof(ngx_http_auth_radius_proxy_t));	
+
+	proxy = ngx_pcalloc(pool,sizeof(ngx_http_auth_radius_proxy_t));
 	if(proxy == NULL) {
 		goto failed;
 	}
 	cln->data = proxy;
 
+    proxy->event_set = 0;
 	proxy->request_packets = fr_packet_list_create(1);
 	ngx_queue_init(&proxy->requests);
-
-	proxy->resend_event.handler = ngx_http_auth_radius_resend_handler;
-	proxy->resend_event.data = proxy;
-	proxy->resend_event.log = log;
 	proxy->pool = pool;
 
-	proxy->log = log;
-	proxy->log_level = NGX_LOG_ERR;
 	proxy->udp_connections = fr_hash_table_create(ngx_http_auth_radius_hash_connection,
             NULL,NULL);
 	if(proxy->udp_connections == NULL) {
@@ -889,7 +883,16 @@ ngx_http_auth_radius_authenticate_finish_handler(ngx_http_auth_radius_request_t*
 }
 
 
-ngx_int_t 
+static void ngx_http_auth_radius_set_resend_event(ngx_log_t* log,
+                        ngx_http_auth_radius_proxy_t* proxy)
+{
+    proxy->event_set = 1;
+    proxy->resend_event.log = log;
+    proxy->resend_event.data = proxy;
+    proxy->resend_event.handler = ngx_http_auth_radius_resend_handler;
+}
+
+ngx_int_t
 ngx_http_auth_radius_authenticate(ngx_http_request_t* r)
 {
 	ngx_http_auth_radius_request_t* rr = NULL;
@@ -901,10 +904,15 @@ ngx_http_auth_radius_authenticate(ngx_http_request_t* r)
     rr = ctx->rr;
     rlcf = ctx->rlcf;
 
+    //set resend-event firstly
+    if(ctx->proxy->event_set == 0) {
+        ngx_http_auth_radius_set_resend_event(r->connection->log,ctx->proxy);
+    }
+
     if(rr->done) {
         //radius authentication has finished
         if(rr->error_code != NGX_HTTP_AUTH_RADIUS_OK) {
-            rc = ngx_http_auth_radius_set_realm(r,&rlcf->realm);; 
+            rc = ngx_http_auth_radius_set_realm(r,&rlcf->realm);;
         } else {
             rc = NGX_OK;
         }
@@ -913,11 +921,10 @@ ngx_http_auth_radius_authenticate(ngx_http_request_t* r)
     }
 
 	rr->handler = ngx_http_auth_radius_authenticate_finish_handler;
-    rr->data = ctx;
 
 	if(ngx_http_auth_radius_send_request(r) == NGX_ERROR) {
         return NGX_ERROR;
     }
-    
+
     return NGX_AGAIN;
 }

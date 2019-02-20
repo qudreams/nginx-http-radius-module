@@ -23,7 +23,7 @@ static ngx_str_t auth_radius_types[] = {
 
 static void* ngx_http_auth_radius_create_main_conf(ngx_conf_t* cf);
 static char* ngx_http_auth_radius_init_main_conf(ngx_conf_t*cf,void* conf);
-static void* ngx_http_auth_radius_create_loc_conf(ngx_conf_t* cf); 
+static void* ngx_http_auth_radius_create_loc_conf(ngx_conf_t* cf);
 static char* ngx_http_auth_radius_merge_loc_conf(ngx_conf_t*cf,void* prev,void* conf);
 
 static char* ngx_http_auth_radius_block(ngx_conf_t* cf,ngx_command_t* cmd,void* conf);
@@ -72,7 +72,7 @@ static ngx_http_module_t ngx_http_auth_radius_module_ctx = {
     ngx_http_auth_radius_create_main_conf,  /*create main configuration*/
     ngx_http_auth_radius_init_main_conf,    /*init main configuration*/
     NULL,                                   /*create server configuration*/
-    NULL,                                   /*merge server configuration*/ 
+    NULL,                                   /*merge server configuration*/
     ngx_http_auth_radius_create_loc_conf,   /*create location configuration*/
     ngx_http_auth_radius_merge_loc_conf      /*merge location configuration*/
 };
@@ -89,7 +89,7 @@ ngx_module_t ngx_http_auth_radius_module = {
     NULL,                   /*init thread*/
     NULL,                   /*exit thread*/
     NULL,                   /*exit process*/
-    NULL,                    /*exit master*/ 
+    NULL,                    /*exit master*/
     NGX_MODULE_V1_PADDING
 };
 
@@ -99,7 +99,7 @@ static ngx_http_auth_radius_proxy_t* auth_radius_proxy = NULL;
 static void*
 ngx_http_auth_radius_create_main_conf(ngx_conf_t* cf) {
     ngx_http_auth_radius_main_conf_t* rmcf = NULL;
-    
+
     rmcf = ngx_pcalloc(cf->pool,sizeof(*rmcf));
     if(rmcf != NULL) {
         ngx_str_null(&rmcf->dict_dir);
@@ -139,7 +139,7 @@ ngx_http_auth_radius_create_loc_conf(ngx_conf_t* cf) {
 
 static char*
 ngx_http_auth_radius_merge_loc_conf(ngx_conf_t* cf,
-        void* prev,void* conf) 
+        void* prev,void* conf)
 {
     ngx_http_auth_radius_loc_conf_t* child = conf;
     ngx_http_auth_radius_loc_conf_t* parent = prev;
@@ -155,10 +155,10 @@ ngx_http_auth_radius_merge_loc_conf(ngx_conf_t* cf,
 
 static char*
 ngx_http_auth_radius_server_block(ngx_conf_t* cf,
-        ngx_command_t* dummy,void* conf) 
+        ngx_command_t* dummy,void* conf)
 {
     ngx_str_t* val = NULL;
-    ngx_http_auth_radius_main_conf_t* rmcf = conf; 
+    ngx_http_auth_radius_main_conf_t* rmcf = conf;
     ngx_http_auth_radius_server_t* server = NULL;
     ngx_http_auth_radius_server_t* servers = NULL;
 
@@ -170,10 +170,10 @@ ngx_http_auth_radius_server_block(ngx_conf_t* cf,
                 "ngx_http_auth_radius: directive parameter is incorrect");
         return NGX_CONF_ERROR;
     }
-    
+
     val = cf->args->elts;
     if(ngx_strncmp(val[0].data,(u_char*)"auth_timeout",val[0].len) == 0) {
-        server->auth_timeout = ngx_atoi(val[1].data,val[1].len); 
+        server->auth_timeout = ngx_atoi(val[1].data,val[1].len);
     } else if(ngx_strncmp(val[0].data,(u_char*)"resend_limit",val[0].len) == 0) {
         server->resend_limit = ngx_atoi(val[1].data,val[1].len);
     } else if(ngx_strncmp(val[0].data,(u_char*)"url",val[0].len) == 0) {
@@ -195,12 +195,12 @@ ngx_http_auth_radius_server_block(ngx_conf_t* cf,
 }
 
 
-static char* 
+static char*
 ngx_http_auth_radius_block(ngx_conf_t* cf,
         ngx_command_t* cmd,void* conf)
 {
     ngx_http_auth_radius_main_conf_t* rmcf = conf;
-    ngx_conf_t saved = *cf; 
+    ngx_conf_t saved = *cf;
     ngx_str_t     *value,name;
     ngx_http_auth_radius_server_t* server = NULL;
     char* rv = NULL;
@@ -237,7 +237,7 @@ ngx_http_auth_radius_block(ngx_conf_t* cf,
                     "ngx_http_auth_radius: server url haven't been set.");
             return NGX_CONF_ERROR;
         }
-                                                                           
+
         server->parsed_url.url = server->url;
         server->parsed_url.default_port = 1812;
         if(ngx_parse_url(cf->pool,&server->parsed_url) == NGX_ERROR) {
@@ -259,16 +259,16 @@ ngx_http_auth_radius_parse_auth_type(const ngx_str_t* type_name) {
     ngx_str_t* name = NULL;
 
     for(i = 0;i < sizeof(auth_radius_types) / sizeof(ngx_str_t);i++) {
-        name = auth_radius_types + i; 
-        
-        if((type_name->len == name->len) && 
-            (ngx_strncasecmp(type_name->data,name->data,type_name->len) == 0)) 
+        name = auth_radius_types + i;
+
+        if((type_name->len == name->len) &&
+            (ngx_strncasecmp(type_name->data,name->data,type_name->len) == 0))
         {
-            auth_type = i;                      
+            auth_type = i;
             break;
         }
     }
-    
+
     return auth_type;
 }
 
@@ -285,7 +285,7 @@ ngx_http_auth_radius(ngx_conf_t* cf,ngx_command_t* cmd,void* conf) {
     }
 
     rlcf->realm.len = sizeof("Basic realm=\"") - 1 + value[1].len + 1;
-    rlcf->realm.data = ngx_pcalloc(cf->pool,rlcf->realm.len); 
+    rlcf->realm.data = ngx_pcalloc(cf->pool,rlcf->realm.len);
     if(rlcf->realm.data == NULL) {
         return NGX_CONF_ERROR;
     }
@@ -328,7 +328,7 @@ ngx_http_auth_radius_server(ngx_conf_t* cf,ngx_command_t* cmd,void* conf) {
             return NGX_CONF_OK;;
         }
     }
-    
+
     return NGX_CONF_ERROR;
 }
 
@@ -337,9 +337,12 @@ static ngx_int_t
 ngx_http_auth_radius_init(ngx_conf_t* cf) {
     ngx_http_core_main_conf_t* cmcf = NULL;
     ngx_http_handler_pt* h = NULL;
-    
-    
+
+
+    ngx_conf_log_error(NGX_LOG_ERR,cf,0,"cf->log: %p,pool: %p,pool->log: %p",
+        cf->log,cf->pool,cf->pool->log);
     auth_radius_proxy = ngx_http_auth_radius_create_proxy(cf->pool);
+
     if(auth_radius_proxy == NULL) {
         ngx_conf_log_error(NGX_LOG_ERR,cf,NGX_ENOMEM,
                 "ngx_http_auth_radius: failed to create radius proxy");
@@ -348,12 +351,12 @@ ngx_http_auth_radius_init(ngx_conf_t* cf) {
     }
 
     cmcf = ngx_http_conf_get_module_main_conf(cf,ngx_http_core_module);
-    
+
     h = ngx_array_push(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
     if(h == NULL) {
         return NGX_ERROR;
     }
-    
+
     *h = ngx_http_auth_radius_handler;
 
     return NGX_OK;
@@ -363,7 +366,7 @@ ngx_http_auth_radius_init(ngx_conf_t* cf) {
 static ngx_int_t
 ngx_http_auth_radius_handler(ngx_http_request_t* r) {
     ngx_http_auth_radius_loc_conf_t* rlcf = NULL;
-    ngx_int_t rc = NGX_OK; 
+    ngx_int_t rc = NGX_OK;
     ngx_http_auth_radius_ctx_t* ctx = NULL;
     ngx_http_auth_radius_request_t* rr = NULL;
 
@@ -382,12 +385,12 @@ ngx_http_auth_radius_handler(ngx_http_request_t* r) {
         if(rc == NGX_ERROR) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
-        
-        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, 
+
+        ngx_log_debug1(NGX_LOG_DEBUG_HTTP,
                 r->connection->log, 0, "http_auth_radius: Username is \"%V\"",
                     &r->headers_in.user);
         if (r->headers_in.passwd.len == 0) {
-            ngx_log_debug0(NGX_LOG_DEBUG_HTTP, 
+            ngx_log_debug0(NGX_LOG_DEBUG_HTTP,
                 r->connection->log, 0, "http_auth_radius: Password is empty");
             return ngx_http_auth_radius_set_realm(r,&rlcf->realm);
         }
@@ -396,16 +399,17 @@ ngx_http_auth_radius_handler(ngx_http_request_t* r) {
         if(ctx == NULL) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
-        
+
         rr = ngx_http_auth_radius_create_request(auth_radius_proxy,r);
         if(rr == NULL) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
-        
+
         ctx->proxy = auth_radius_proxy;
         ctx->rr = rr;
         ctx->r = r;
         ctx->rlcf = rlcf;
+        rr->data = ctx;
 
         ngx_http_set_ctx(r,ctx,ngx_http_auth_radius_module);
     }

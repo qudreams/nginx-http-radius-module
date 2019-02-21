@@ -57,7 +57,7 @@
                     #radius server configuration
 
                     #the third paramter is authentication method,you can set the following value:
-                    # PAP CHAP MSCHAP MSCHAPV2 EAPMD5
+                    # PAP CHAP MSCHAP MSCHAP2 EAPMD5
 
                     auth_radius_server "radius_server1" "PAP";
 

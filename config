@@ -1,6 +1,18 @@
 ngx_addon_name=ngx_http_auth_radius_module
-HTTP_MODULES="$HTTP_MODULES ngx_http_auth_radius_module"
-NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/ngx_http_auth_radius_module.c \
-        $ngx_addon_dir/ngx_http_auth_radius.c"
-CORE_INCS="$CORE_INCS $ngx_addon_dir/../libmyradclient/"
-CORE_LIBS="$CORE_LIBS $ngx_addon_dir/../libmyradclient/libmyradclient.a"
+# to make module compile into dynamic one
+# you need to add "-fPIC" in CFLAGS in Makefile on libmyradclient 
+if [ -n "$ngx_module_link" ]; then
+    ngx_module_type=HTTP
+    ngx_module_name="$ngx_addon_name"
+    ngx_module_srcs="$ngx_addon_dir/ngx_http_auth_radius_module.c \
+                $ngx_addon_dir/ngx_http_auth_radius.c"
+    ngx_module_incs="$ngx_addon_dir/../libmyradclient"
+    ngx_module_libs="$ngx_addon_dir/../libmyradclient/libmyradclient.a"
+    . auto/module
+else
+    HTTP_MODULES="$HTTP_MODULES ngx_http_auth_radius_module"
+    NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/ngx_http_auth_radius_module.c \
+            $ngx_addon_dir/ngx_http_auth_radius.c"
+    CORE_INCS="$CORE_INCS $ngx_addon_dir/../libmyradclient"
+    CORE_LIBS="$CORE_LIBS $ngx_addon_dir/../libmyradclient/libmyradclient.a"
+fi

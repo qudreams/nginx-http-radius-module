@@ -1,4 +1,6 @@
 ngx_addon_name=ngx_http_auth_radius_module
+# to make module compile into dynamic one
+# you need to add "-fPIC" in CFLAGS in Makefile on libmyradclient 
 if [ -n "$ngx_module_link" ]; then
     ngx_module_type=HTTP
     ngx_module_name="$ngx_addon_name"
